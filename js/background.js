@@ -1,16 +1,12 @@
 import * as THREE from 'three';
 
-// =========================================================
-// 배경 파티클 (Background Particles)
-// =========================================================
-
 export function initBackground() {
     const bgContainer = document.getElementById('bg-canvas');
     const bgScene = new THREE.Scene();
     bgScene.fog = new THREE.FogExp2(0x050505, 0.002);
 
     const bgCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    bgCamera.position.z = 100; // 참고 파일과 동일하게 초기 z 위치 설정
+    bgCamera.position.z = 100;
 
     const bgRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     bgRenderer.setSize(window.innerWidth, window.innerHeight);
@@ -40,12 +36,9 @@ export function initBackground() {
 }
 
 export function updateBackground(bgScene, bgCamera, bgRenderer, particles, mouseX, mouseY) {
-    // 참고 파일과 동일한 회전 속도
     particles.rotation.x += 0.0005;
     particles.rotation.y += 0.0003;
     
-    // 참고 파일과 동일한 카메라 움직임
-    // mouseX, mouseY는 이미 lerp로 부드럽게 처리되었으므로 직접 사용
     bgCamera.position.x += (mouseX * 0.01 - bgCamera.position.x) * 0.05;
     bgCamera.position.y += (-mouseY * 0.01 - bgCamera.position.y) * 0.05;
     bgCamera.lookAt(bgScene.position);

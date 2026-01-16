@@ -1,33 +1,25 @@
-// =========================================================
-// 타이머 파티클 시스템
-// =========================================================
-
-// 마우스/터치 상호작용 설정 (타이머 캔버스용)
 export const timerMouse = {
     x: null,
     y: null,
-    radius: 50 // 마우스가 영향을 미치는 반경 (100 -> 50으로 감소)
+    radius: 50
 };
 
-// 화면 크기에 따른 스케일 계산 (기준: 1920px 너비)
 function getScale() {
     const baseWidth = 1920;
     const currentWidth = window.innerWidth;
-    // 최소 0.3, 최대 1.5로 제한하여 너무 작거나 크지 않게
     return Math.max(0.3, Math.min(1.5, currentWidth / baseWidth));
 }
 
-// 파티클 클래스 정의
 export class Particle {
     constructor(x, y, baseX, baseY, scale = 1) {
-        this.x = baseX; // 즉시 원래 위치에 생성
+        this.x = baseX;
         this.y = baseY;
         this.baseX = baseX;
         this.baseY = baseY;
-        this.size = 2.5 * scale; // 입자 크기 (화면 크기에 비례)
-        this.density = (Math.random() * 30) + 1; // 반응 속도(무게감)
-        this.color = '#ff69b4'; // 핑크색
-        this.isAnimating = false; // 초기 애니메이션 비활성화
+        this.size = 2.5 * scale;
+        this.density = (Math.random() * 30) + 1;
+        this.color = '#ff69b4';
+        this.isAnimating = false;
     }
     
     draw(ctx) {
@@ -39,7 +31,6 @@ export class Particle {
     }
 
     update() {
-        // 마우스 호버 효과
         if (timerMouse.x !== null && timerMouse.y !== null) {
             let dx = timerMouse.x - this.x;
             let dy = timerMouse.y - this.y;
@@ -47,7 +38,6 @@ export class Particle {
             let maxDistance = timerMouse.radius;
             
             if (distance < maxDistance) {
-                // 마우스가 가까이 오면 밀어냄 (흩어짐)
                 let forceDirectionX = dx / distance;
                 let forceDirectionY = dy / distance;
                 let force = (maxDistance - distance) / maxDistance;
@@ -57,7 +47,6 @@ export class Particle {
                 this.x -= directionX * 3;
                 this.y -= directionY * 3;
             } else {
-                // 마우스가 멀어지면 원래 자리로 복귀
                 if (this.x !== this.baseX) {
                     let dx = this.x - this.baseX;
                     this.x -= dx / 10;
@@ -68,7 +57,6 @@ export class Particle {
                 }
             }
         } else {
-            // 마우스가 없을 때도 원래 자리로 복귀
             if (this.x !== this.baseX) {
                 let dx = this.x - this.baseX;
                 this.x -= dx / 10;
@@ -81,7 +69,6 @@ export class Particle {
     }
 }
 
-// 숫자별 파티클 배열 관리
 export class DigitParticles {
     constructor(x, y, isColon = false) {
         this.x = x;
@@ -98,7 +85,6 @@ export class DigitParticles {
         this.currentValue = value;
         
         if (this.isColon) {
-            // 콜론은 간단한 점 두 개
             const gap = 20 * scale;
             for (let i = 0; i < 2; i++) {
                 const py = this.y - (30 * scale) + (i * 60 * scale);
@@ -108,7 +94,6 @@ export class DigitParticles {
             return;
         }
 
-        // 텍스트를 캔버스에 그려서 픽셀 데이터 추출
         const tempCanvas = document.createElement('canvas');
         const canvasSize = 200 * scale;
         tempCanvas.width = canvasSize;
@@ -122,7 +107,7 @@ export class DigitParticles {
         tempCtx.fillText(value.toString(), canvasSize / 2, canvasSize * 0.75);
         
         const textCoordinates = tempCtx.getImageData(0, 0, canvasSize, canvasSize * 1.5);
-        const gap = Math.max(2, Math.floor(4 * scale)); // 점들의 간격 (최소 2)
+        const gap = Math.max(2, Math.floor(4 * scale));
         
         for (let y = 0; y < textCoordinates.height; y += gap) {
             for (let x = 0; x < textCoordinates.width; x += gap) {
@@ -156,7 +141,6 @@ export class DigitParticles {
     }
 }
 
-// 타이머 초기화
 export function initTimer() {
     const clockContainer = document.getElementById('clock-canvas');
     const clockCanvas = document.createElement('canvas');
@@ -172,7 +156,6 @@ export function initTimer() {
     const clockCtx = clockCanvas.getContext('2d');
     const scale = getScale();
 
-    // 마우스/터치 이벤트 설정
     function updateMousePosition(clientX, clientY) {
         const rect = clockCanvas.getBoundingClientRect();
         timerMouse.x = clientX - rect.left;
@@ -188,7 +171,6 @@ export function initTimer() {
         timerMouse.y = null;
     });
 
-    // 터치 이벤트 (모바일)
     clockCanvas.addEventListener('touchmove', (event) => {
         event.preventDefault();
         if (event.touches.length > 0) {
@@ -201,21 +183,17 @@ export function initTimer() {
         timerMouse.y = null;
     });
 
-    // 타이머 파티클 배열
     const digitParticles = [];
     const colonParticles = [];
 
-    // 숫자 위치 계산 (화면 중앙 하단, 화면 크기에 비례)
     const centerX = window.innerWidth / 2;
     const bottomMargin = 150 * scale;
     const centerY = window.innerHeight - bottomMargin;
-    const digitSpacing = 90 * scale; // 숫자 간 간격
-    const colonSpacing = 50 * scale; // 콜론 간격
+    const digitSpacing = 90 * scale;
+    const colonSpacing = 50 * scale;
 
-    // DDD:HH:MM:SS => 3 digits + colon + 2 + colon + 2 + colon + 2
-    // 총 12개 슬롯: D D D : H H : M M : S S
     const positions = [];
-    let currentX = centerX - (digitSpacing * 5.5); // 중앙 정렬
+    let currentX = centerX - (digitSpacing * 5.5);
 
     for (let i = 0; i < 12; i++) {
         const isColon = (i === 3 || i === 6 || i === 9);
@@ -252,7 +230,6 @@ export function initTimer() {
     };
 }
 
-// 스크램블 효과
 export function triggerScramble(digitParticles) {
     const now = Date.now();
     digitParticles.forEach((digit, i) => {
@@ -260,7 +237,6 @@ export function triggerScramble(digitParticles) {
     });
 }
 
-// 타이머 업데이트
 export function updateTimer(clockCtx, clockCanvas, digitParticles, colonParticles, targetDate, now, scale = 1) {
     clockCtx.clearRect(0, 0, clockCanvas.width, clockCanvas.height);
     
@@ -274,7 +250,6 @@ export function updateTimer(clockCtx, clockCanvas, digitParticles, colonParticle
     }
     const timeStr = d + h + m + s;
 
-    // 숫자 파티클 업데이트
     digitParticles.forEach((digit, i) => {
         if (now < digit.lockTime) {
             if (Math.random() > 0.5) {
@@ -287,7 +262,6 @@ export function updateTimer(clockCtx, clockCanvas, digitParticles, colonParticle
         digit.draw(clockCtx);
     });
 
-    // 콜론 파티클 업데이트 (깜빡임 효과)
     colonParticles.forEach(colon => {
         const opacity = 0.7 + Math.sin(now * 0.005) * 0.3;
         colon.particles.forEach(particle => {
@@ -301,7 +275,6 @@ export function updateTimer(clockCtx, clockCanvas, digitParticles, colonParticle
     });
 }
 
-// 리사이즈 처리
 export function resizeTimer(clockCanvas, digitParticles, colonParticles, positions, digitSpacing, colonSpacing, getScale) {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -310,7 +283,6 @@ export function resizeTimer(clockCanvas, digitParticles, colonParticles, positio
     clockCanvas.width = w;
     clockCanvas.height = h;
     
-    // 타이머 위치 재계산 (스케일 적용)
     const newCenterX = w / 2;
     const bottomMargin = 150 * scale;
     const newCenterY = h - bottomMargin;
@@ -330,7 +302,6 @@ export function resizeTimer(clockCanvas, digitParticles, colonParticles, positio
         }
     });
     
-    // 파티클 위치 업데이트 및 재생성
     let digitIdx = 0;
     let colonIdx = 0;
     positions.forEach((pos, idx) => {
