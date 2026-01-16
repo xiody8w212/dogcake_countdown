@@ -188,6 +188,12 @@ class NixieTube {
         this.group = new THREE.Group();
         this.isColon = isColon;
         this.lockTime = 0;
+        this.currentNumber = 0;
+        this.pixels = [];
+        this.isHovered = false;
+        this.hoverTime = 0;
+        this.pixelSize = 0.08;
+        this.pixelSpacing = 0.1;
 
         const glassGeo = new THREE.CylinderGeometry(0.9, 0.9, 3.0, 32);
         const glassMat = new THREE.MeshPhysicalMaterial({
@@ -212,22 +218,188 @@ class NixieTube {
             this.filamentMesh = filMesh;
         }
 
-        this.numMaterial = new THREE.MeshBasicMaterial({
-            map: isColon ? colonTexture : numberTextures[0], 
-            transparent: true, opacity: 1.0,
-            color: 0xffffff, blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide, depthTest: false
-        });
-        const numMesh = new THREE.Mesh(planeGeo, this.numMaterial);
-        this.group.add(numMesh);
+        // 픽셀화된 숫자 생성
+        this.createPixelNumber(0);
+        
+        // 호버 감지를 위한 평면 추가
+        this.hoverPlane = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.6, 3.2),
+            new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
+        );
+        this.hoverPlane.position.z = 0.1;
+        this.group.add(this.hoverPlane);
 
         // 위치 지정 (X축 가운데 유지 + 화면 하단으로 내림)
-        // NOTE: 전체 시계의 Y 위치는 여기서 한 번에 조정
         this.group.position.set(xPosition, -6.0, 0);
         clockScene.add(this.group);
     }
+
+    createPixelNumber(number) {
+        // 기존 픽셀 제거
+        this.pixels.forEach(pixel => {
+            this.group.remove(pixel);
+            pixel.geometry.dispose();
+            pixel.material.dispose();
+        });
+        this.pixels = [];
+
+        if (this.isColon) {
+            // 콜론은 기존 방식 유지
+            this.numMaterial = new THREE.MeshBasicMaterial({
+                map: colonTexture, 
+                transparent: true, opacity: 1.0,
+                color: 0xffffff, blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide, depthTest: false
+            });
+            const numMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 3.2), this.numMaterial);
+            this.group.add(numMesh);
+            return;
+        }
+
+        // 숫자를 픽셀화하여 생성
+        const canvas = document.createElement('canvas');
+        canvas.width = 80;
+        canvas.height = 160;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 120px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(number.toString(), 40, 80);
+        
+        const imageData = ctx.getImageData(0, 0, 80, 160);
+        const data = imageData.data;
+        
+        const pixelGeo = new THREE.PlaneGeometry(this.pixelSize, this.pixelSize);
+        const pixelMat = new THREE.MeshBasicMaterial({
+            color: 0x4a90e2, // 파란색
+            transparent: true,
+            opacity: 1.0,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide
+        });
+
+        const width = 1.6;
+        const height = 3.2;
+        const cols = 20;
+        const rows = 40;
+
+        for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+                const x = Math.floor((col / cols) * 80);
+                const y = Math.floor((row / rows) * 160);
+                const idx = (y * 80 + x) * 4;
+                
+                if (data[idx + 3] > 128) { // 알파값 체크
+                    const pixel = new THREE.Mesh(pixelGeo.clone(), pixelMat.clone());
+                    const xPos = (col / cols - 0.5) * width;
+                    const yPos = (0.5 - row / rows) * height;
+                    pixel.position.set(xPos, yPos, 0);
+                    pixel.userData = {
+                        originalX: xPos,
+                        originalY: yPos,
+                        originalZ: 0,
+                        velocity: new THREE.Vector3(0, 0, 0),
+                        scattered: false
+                    };
+                    this.group.add(pixel);
+                    this.pixels.push(pixel);
+                }
+            }
+        }
+
+        this.currentNumber = number;
+    }
+
     setNumber(n) {
-        if (!this.isColon && numberTextures[n]) this.numMaterial.map = numberTextures[n];
+        if (!this.isColon && n !== this.currentNumber) {
+            this.createPixelNumber(n);
+        }
+    }
+
+    updateHover(mouse, raycaster) {
+        raycaster.setFromCamera(mouse, clockCamera);
+        const intersects = raycaster.intersectObject(this.hoverPlane);
+        
+        const wasHovered = this.isHovered;
+        this.isHovered = intersects.length > 0;
+
+        if (this.isHovered && !wasHovered) {
+            this.hoverTime = Date.now();
+            // 흩어지기 시작
+            this.pixels.forEach((pixel, i) => {
+                if (!pixel.userData.scattered) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 0.03 + Math.random() * 0.04;
+                    const zSpeed = (Math.random() - 0.5) * 0.03;
+                    pixel.userData.velocity.set(
+                        Math.cos(angle) * speed,
+                        Math.sin(angle) * speed,
+                        zSpeed
+                    );
+                    pixel.userData.scattered = true;
+                    pixel.userData.startOpacity = pixel.material.opacity;
+                }
+            });
+        } else if (!this.isHovered && wasHovered) {
+            // 원래 위치로 복귀
+            this.pixels.forEach(pixel => {
+                pixel.userData.scattered = false;
+                pixel.userData.velocity.set(0, 0, 0);
+            });
+        }
+    }
+
+    update() {
+        if (this.isColon || this.pixels.length === 0) return;
+
+        const now = Date.now();
+        const hoverDuration = now - this.hoverTime;
+
+        this.pixels.forEach(pixel => {
+            if (pixel.userData.scattered) {
+                // 흩어지는 애니메이션
+                pixel.position.add(pixel.userData.velocity);
+                pixel.userData.velocity.multiplyScalar(0.97); // 저항
+                
+                // 거리에 따라 투명도 조절
+                const distance = pixel.position.distanceTo(new THREE.Vector3(
+                    pixel.userData.originalX,
+                    pixel.userData.originalY,
+                    pixel.userData.originalZ
+                ));
+                const maxDistance = 1.5;
+                if (distance > maxDistance) {
+                    pixel.material.opacity = Math.max(0, pixel.material.opacity - 0.03);
+                } else {
+                    const fadeStart = maxDistance * 0.6;
+                    if (distance > fadeStart) {
+                        const fadeRatio = (distance - fadeStart) / (maxDistance - fadeStart);
+                        pixel.material.opacity = (pixel.userData.startOpacity || 1) * (1 - fadeRatio * 0.8);
+                    }
+                }
+            } else {
+                // 원래 위치로 복귀
+                const targetX = pixel.userData.originalX;
+                const targetY = pixel.userData.originalY;
+                const targetZ = pixel.userData.originalZ;
+                
+                const distX = targetX - pixel.position.x;
+                const distY = targetY - pixel.position.y;
+                const distZ = targetZ - pixel.position.z;
+                const distance = Math.sqrt(distX * distX + distY * distY + distZ * distZ);
+                
+                if (distance > 0.01) {
+                    pixel.position.x += distX * 0.15;
+                    pixel.position.y += distY * 0.15;
+                    pixel.position.z += distZ * 0.15;
+                } else {
+                    pixel.position.set(targetX, targetY, targetZ);
+                }
+                
+                pixel.material.opacity = Math.min(1, pixel.material.opacity + 0.08);
+            }
+        });
     }
 }
 
@@ -268,6 +440,10 @@ bloomPass.radius = 0.5;
 const composer = new EffectComposer(clockRenderer);
 composer.addPass(renderScene);
 composer.addPass(bloomPass);
+
+// 마우스 호버 감지를 위한 Raycaster
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
 
 // --- Logic ---
 // "2026.10.31 00:00" 서울시간(Asia/Seoul = UTC+09:00) 기준 타겟
@@ -322,6 +498,24 @@ updateCameraDistance();
 // 리사이즈 이벤트
 window.addEventListener('resize', updateCameraDistance);
 
+// 마우스 이동 이벤트로 호버 감지
+clockContainer.addEventListener('mousemove', (event) => {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+});
+
+clockContainer.addEventListener('mouseleave', () => {
+    // 마우스가 영역을 벗어나면 모든 호버 상태 해제
+    tubes.forEach(tube => {
+        if (tube.isHovered) {
+            tube.isHovered = false;
+            tube.pixels.forEach(pixel => {
+                pixel.userData.scattered = false;
+                pixel.userData.velocity.set(0, 0, 0);
+            });
+        }
+    });
+});
 
 function animate() {
     requestAnimationFrame(animate);
@@ -359,9 +553,17 @@ function animate() {
         } else {
             tube.setNumber(parseInt(timeStr[i]));
         }
+        
+        // 호버 감지 및 업데이트
+        tube.updateHover(mouse, raycaster);
+        tube.update();
     });
     
-    colons.forEach(c => c.numMaterial.opacity = 0.7 + Math.sin(now*0.005)*0.3);
+    colons.forEach(c => {
+        if (c.numMaterial) {
+            c.numMaterial.opacity = 0.7 + Math.sin(now*0.005)*0.3;
+        }
+    });
 
     composer.render();
 }
